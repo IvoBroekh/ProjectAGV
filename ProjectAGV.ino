@@ -5,9 +5,12 @@ extern "C" {
 #include "utility/twi.h"  // from Wire library, so we can do bus scanning
 }
 
-#define TCAADDR 0x70   //Het adres van de multiplexer
-#define sensorLinks 1      //Verander hier op welk adres je de sensoren hebt gezet
+#define TCAADDR 0x70       //Het adres van de multiplexer
+//Verander hieronder op welk adres je de sensoren hebt gezet
+#define sensorLinks 1      
 #define sensorRechts 7
+#define sensorVoorLinks 6
+#define sensorVoorRechts 5
 
 void startSensoren()
 {
@@ -36,7 +39,6 @@ void startSensoren()
  
 void SensorSelect(int nummer) {
   if (nummer > 7) return;
- 
   Wire.beginTransmission(TCAADDR);
   Wire.write(1 << nummer);
   Wire.endTransmission();  
@@ -45,25 +47,6 @@ void SensorSelect(int nummer) {
 void setup() {
   Serial.begin(9600);
   startSensoren();
-  Serial.println("VCNL4010 test");
-
-  pinMode(7, OUTPUT);
-  pinMode(8, OUTPUT);
-  pinMode(6, INPUT);
-  
-  SensorSelect(sensorLinks);
-  if (! vcnl.begin()){
-    Serial.println("Sensor not found :(");
-    while (1);
-  }
-  Serial.println("Found VCNL4010 nummer 1");
-
-  SensorSelect(sensorRechts);
-  if (! vcnl.begin()){
-    Serial.println("Sensor not found :(");
-    while (1);
-  }
-  Serial.println("Found VCNL4010 nummer 2");
 }
 
 //Deze functie returnt het gemiddelde van 5 scans voor stabiliteit. Heeft het sensornummer nodig
@@ -85,17 +68,4 @@ void loop() {
   int afstand2 = (SensorAfstand(sensorRechts)-sensorLinksijk);
   Serial.print("Proximity 1: "); Serial.println(afstand1);
   Serial.print("Proximity 2: "); Serial.println(afstand2);
-  if(afstand1 > afstand2+10){
-    digitalWrite(8, HIGH);
-    digitalWrite(7, LOW);
-  }
-  else if(afstand2 > afstand1+10){
-    digitalWrite(8, LOW);
-    digitalWrite(7, HIGH);
-  }
-  else{
-    digitalWrite(7, LOW);
-    digitalWrite(8, LOW);
-  }
-  //Serial.println(digitalRead(6));
 }
