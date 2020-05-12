@@ -9,8 +9,12 @@ extern "C" {
 //Verander hieronder op welk adres je de sensoren hebt gezet
 #define sensorLinks 1      
 #define sensorRechts 7
+#define motorLinks 7
+#define motorRechts 8
 #define sensorVoorLinks 6
 #define sensorVoorRechts 5
+
+#define nauwkeurigheid 20  //schaal van 5-100, dichter bij de 5 is nauwkeuriger maar kan valse metingen geven.
 
 void startSensoren()
 {
@@ -37,7 +41,7 @@ void startSensoren()
     Serial.println("\ndone");
 }
  
-void SensorSelect(int nummer) {
+void SensorSelect(uint8_t nummer) {
   if (nummer > 7) return;
   Wire.beginTransmission(TCAADDR);
   Wire.write(1 << nummer);
@@ -47,6 +51,22 @@ void SensorSelect(int nummer) {
 void setup() {
   Serial.begin(9600);
   startSensoren();
+  SensorSelect(sensorLinks);
+  if (! vcnl.begin()){
+    Serial.println("Sensor niet gevonden:(");
+    while (1);
+  }
+  Serial.println("VCNL4010 nummer 1 gevonden");
+  SensorSelect(sensorRechts);
+  if (! vcnl.begin()){
+    Serial.println("Sensor niet gevonden:(");
+    while (1);
+  }
+  Serial.println("VCNL4010 nummer 2 gevonden");
+
+  //ledjes om te testen
+  pinMode(motorLinks, OUTPUT);
+  pinMode(motorRechts, OUTPUT);
 }
 
 //Deze functie returnt het gemiddelde van 5 scans voor stabiliteit. Heeft het sensornummer nodig
@@ -60,7 +80,7 @@ int SensorAfstand(int sensorNr){
 }
 
 void loop() {
-  //ijk de sensoren omdat ze allemaal een klein beetje afwijken
+  //ijk de sensoren omdat ze allemaal een klein beetje afwijke
   static int sensorRechtsijk = SensorAfstand(sensorLinks);
   static int sensorLinksijk = SensorAfstand(sensorRechts);
   
@@ -68,4 +88,17 @@ void loop() {
   int afstand2 = (SensorAfstand(sensorRechts)-sensorLinksijk);
   Serial.print("Proximity 1: "); Serial.println(afstand1);
   Serial.print("Proximity 2: "); Serial.println(afstand2);
+    if(afstand1 > afstand2+nauwkeurigheid){
+    digitalWrite(8, HIGH);
+    digitalWrite(7, LOW);
+  }
+  else if(afstand2 > afstand1+nauwkeurigheid){
+    digitalWrite(8, LOW);
+    digitalWrite(7, HIGH);
+  }
+  else{
+    digitalWrite(7, LOW);
+    digitalWrite(8, LOW);
+  }
+
 }
