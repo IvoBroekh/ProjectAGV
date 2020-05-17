@@ -1,23 +1,28 @@
 #include <Wire.h>
 #include <Adafruit_VCNL4010.h>
+#include <ZumoShield.h>
 Adafruit_VCNL4010 vcnl;
 extern "C" { 
 #include "utility/twi.h"  // from Wire library, so we can do bus scanning
 }
 
+ZumoMotors motors;
+
 #define TCAADDR 0x70       //Het adres van de multiplexer
 
 //Verander hieronder op welk adres je de sensoren hebt gezet
-#define SENSORLINKS 1      
+#define SENSORLINKS 2      
 #define SENSORRECHTS 7
-#define MOTORLINKS 7
-#define MOTORRECHTS 8
-#define SENSORLINKSVOOR 1
-#define SENSORRECHTSVOOR 7
-#define HANDTIMING 1000
-#define VOLGAFSTAND 40
+//#define MOTORLINKS 7
+//#define MOTORRECHTS 8
+#define SENSORLINKSVOOR 0
+#define SENSORRECHTSVOOR 5
 
-#define NAUWKEURIGHEID 10  //Nauwkeurigheid van de sensoren op een schaal van 10-100, dichter bij de 10 is nauwkeuriger maar kan valse metingen geven.
+#define LEFTSPEED 120
+#define RIGHTSPEED 120
+#define HANDTIMING 50
+#define VOLGAFSTAND 20
+#define NAUWKEURIGHEID 5  //Nauwkeurigheid van de sensoren op een schaal van 10-100, dichter bij de 10 is nauwkeuriger maar kan valse metingen geven.
 
 //Sorry maar ik maak toch echt een globale variabele voor de tijd.
 unsigned long currentMillis = 0;
@@ -62,7 +67,8 @@ int SensorAfstand(int sensorNr){
   for(int i = 0; i<3; i++){
     average += vcnl.readProximity();
   }
-  average = average/3;
+  average = abs((average/3));
+  //Serial.println(average);
   return(average);
 }
 
@@ -78,43 +84,65 @@ int ScanFront()
   //Door de ijkwaarde van de sensorwaarde af te halen wordt de uiteindelijke waarde ~0 als er niks gedetecteerd word.
   int afstandLinksVoor = (SensorAfstand(SENSORLINKSVOOR)-sensorLinksVoorIjk);
   int afstandRechtsVoor = (SensorAfstand(SENSORRECHTSVOOR)-sensorRechtsVoorIjk);
+  Serial.print("Proximity links: "); Serial.println(afstandLinksVoor);
+  Serial.print("Proximity rechts: "); Serial.println(afstandRechtsVoor);
+  int nauwkeurigheid = abs((afstandLinksVoor + afstandRechtsVoor)/2);
+  Serial.print("Nauwkeurigheid: "); Serial.println(nauwkeurigheid);
+  nauwkeurigheid = map(nauwkeurigheid, 0, 2000, NAUWKEURIGHEID, 50); 
+  nauwkeurigheid = (nauwkeurigheid * nauwkeurigheid); 
+  Serial.print("Nauwkeurigheid: "); Serial.println(nauwkeurigheid);
 
   //Kijk of er een obstakel voor de auto is
-  if((afstandLinksVoor >= NAUWKEURIGHEID) || (afstandRechtsVoor >= NAUWKEURIGHEID))
+  if((afstandLinksVoor >= 5) || (afstandRechtsVoor >= 5))
   {
     handDetectie = true;
-    Serial.println("Hand gevonden");
+    //Serial.println("Hand gevonden");
     handDetectieMillis = currentMillis;
   }
   else
   {
     if((currentMillis - handDetectieMillis) >= HANDTIMING)
     {
-      Serial.println("Geen hand gevonden");
+      //Serial.println("Geen hand gevonden");
+      motors.setLeftSpeed(0);
+      motors.setRightSpeed(0);
       handDetectie = false;
     }
   }
 
   if(handDetectie == true)
   {
-    if(afstandLinksVoor > afstandRechtsVoor + NAUWKEURIGHEID){
-      Serial.println("Draai naar links");
+    if(afstandLinksVoor > afstandRechtsVoor + nauwkeurigheid){
+      motors.setLeftSpeed((-LEFTSPEED));
+      motors.setRightSpeed(RIGHTSPEED);
+      //Serial.println("Draai naar links");
       return 2;
       
     }
-    if(afstandRechtsVoor > afstandLinksVoor + NAUWKEURIGHEID){
-      Serial.println("Draai naar rechts");
+    if(afstandRechtsVoor > afstandLinksVoor + nauwkeurigheid){
+      motors.setLeftSpeed(LEFTSPEED);
+      motors.setRightSpeed((-RIGHTSPEED));
+      //Serial.println("Draai naar rechts");
       return 1;
     }
     
     if((afstandRechtsVoor > VOLGAFSTAND) || (afstandLinksVoor > VOLGAFSTAND))
     {
-      Serial.println("Stop met rijden"); 
+      motors.setLeftSpeed(0);
+      motors.setRightSpeed(0);
+      //Serial.println("Stop met rijden"); 
     }
-    else
+    if((afstandRechtsVoor > (VOLGAFSTAND + nauwkeurigheid)) || (afstandLinksVoor > (VOLGAFSTAND + nauwkeurigheid)))
     {
-      Serial.println("Rijd tot de volgafstand");
-      return 0;
+      motors.setLeftSpeed((-LEFTSPEED));
+      motors.setRightSpeed((-RIGHTSPEED));
+      //Serial.println("Rijd achteruit"); 
+    }
+    if((afstandRechtsVoor < (VOLGAFSTAND)) || (afstandLinksVoor < (VOLGAFSTAND)))
+    {
+      motors.setLeftSpeed(LEFTSPEED);
+      motors.setRightSpeed(RIGHTSPEED);
+      //Serial.println("Rijd tot de volgafstand");
     }
   }
 }
@@ -124,31 +152,49 @@ int ScanSides()
   //De eerste keer dat deze functie wordt aangeroepen ijkt hij de waardes van de sensoren.
   static int sensorLinksIjk = SensorAfstand(SENSORLINKS);
   static int sensorRechtsIjk = SensorAfstand(SENSORRECHTS);
+  static int hoogsteLinks = 0;
+  static int hoogsteRechts = 0;
 
   //Door de ijkwaarde van de sensorwaarde af te halen wordt de uiteindelijke waarde ~0 als er niks gedetecteerd word.
-  int afstandLinks = (SensorAfstand(SENSORLINKS)-sensorLinksIjk);
-  int afstandRechts = (SensorAfstand(SENSORRECHTS)-sensorRechtsIjk);
+  int afstandLinks = abs(SensorAfstand(SENSORLINKS)-sensorLinksIjk);
+  int afstandRechts = abs(SensorAfstand(SENSORRECHTS)-sensorRechtsIjk);
   
   Serial.print("Proximity links: "); Serial.println(afstandLinks);
   Serial.print("Proximity rechts: "); Serial.println(afstandRechts);
   
-  if(abs(afstandLinks) > (abs(afstandRechts) + NAUWKEURIGHEID)){
+  if(afstandLinks > (afstandRechts + NAUWKEURIGHEID)){
     //Hier stuur je de motor naar rechts aan, voor nu nog even een led.
-    digitalWrite(MOTORLINKS, HIGH);
-    digitalWrite(MOTORRECHTS, LOW);
+    if(afstandLinks > hoogsteLinks){
+      hoogsteLinks = afstandLinks;
+          motors.setLeftSpeed(LEFTSPEED);
+          motors.setRightSpeed(RIGHTSPEED/1.5);
+    }
+    else{
+        motors.setLeftSpeed(LEFTSPEED);
+        motors.setRightSpeed(RIGHTSPEED);
+        hoogsteLinks = afstandLinks;
+    }
     return 2;
     
   }
-  else if(abs(afstandRechts) > (abs(afstandLinks) + NAUWKEURIGHEID)){
+  else if(afstandRechts > (afstandLinks + NAUWKEURIGHEID)){
     //Hier stuur je de motor naar links aan, voor nu nog even een led.
-    digitalWrite(MOTORLINKS, LOW);
-    digitalWrite(MOTORRECHTS, HIGH);
+    if(afstandRechts > hoogsteRechts){
+      hoogsteRechts = afstandRechts;
+          motors.setLeftSpeed(LEFTSPEED/1.5);
+          motors.setRightSpeed(RIGHTSPEED);
+    }
+    else{
+        motors.setLeftSpeed(LEFTSPEED);
+        motors.setRightSpeed(RIGHTSPEED);
+        hoogsteRechts = afstandRechts;
+    }
     return 1;
   }
   else{
     //Niet draaien maar weer rechtdoor rijden.
-    digitalWrite(MOTORLINKS, LOW);
-    digitalWrite(MOTORRECHTS, LOW);
+    motors.setLeftSpeed(LEFTSPEED);
+    motors.setRightSpeed(RIGHTSPEED);
     return 0;
   }
 }
@@ -163,17 +209,17 @@ void setup()
     Serial.println("Sensor niet gevonden:");
     while (1);
   }
-  Serial.println("VCNL4010 nummer 1 gevonden");
+  Serial.println("VCNL4010 Linkerkant gevonden");
   SensorSelect(SENSORRECHTS);
   if (! vcnl.begin()){
     Serial.println("Sensor niet gevonden:");
     while (1);
   }
-  Serial.println("VCNL4010 nummer 2 gevonden");
+  Serial.println("VCNL4010 Rechterkant gevonden");
 
   //ledjes om te testen
-  pinMode(MOTORLINKS, OUTPUT);
-  pinMode(MOTORRECHTS, OUTPUT);
+  //pinMode(MOTORLINKS, OUTPUT);
+  //pinMode(MOTORRECHTS, OUTPUT);
 }
 
 
@@ -183,6 +229,6 @@ void loop()
   currentMillis = millis();
   //motorActie 1 = links, 2 = rechts, 0 is niks of rechtdoor.
   int motorActie = ScanSides();
-  int volgActie = ScanFront();
-  delay(100);
+ // int volgActie = ScanFront();
+  //delay(100);
 }
