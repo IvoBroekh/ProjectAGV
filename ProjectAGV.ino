@@ -20,8 +20,8 @@ ZumoMotors motors;
 
 #define LEFTSPEED 150
 #define RIGHTSPEED 150
-#define HANDTIMING 300
-#define VOLGAFSTAND 60
+#define HANDTIMING 200
+#define VOLGAFSTAND 40
 #define STOPAFSTAND 20
 #define NAUWKEURIGHEID 10  //Nauwkeurigheid van de sensoren op een schaal van 10-100, dichter bij de 10 is nauwkeuriger maar kan valse metingen geven.
 
@@ -129,14 +129,14 @@ int ScanFront()
       return;
     }
     
-    if(afstandRechtsVoor > afstandLinksVoor + NAUWKEURIGHEID){
+    if(afstandRechtsVoor > (afstandLinksVoor + NAUWKEURIGHEID)){
       motors.setLeftSpeed(LEFTSPEED/1.5);
       motors.setRightSpeed((-RIGHTSPEED/1.5));
       Serial.println("Draai naar rechts");
       return;
     }
     
-    if(afstandLinksVoor > afstandRechtsVoor + NAUWKEURIGHEID){
+    if(afstandLinksVoor > (afstandRechtsVoor + NAUWKEURIGHEID)){
       motors.setLeftSpeed((-LEFTSPEED/1.5));
       motors.setRightSpeed(RIGHTSPEED/1.5);
       Serial.println("Draai naar links");
