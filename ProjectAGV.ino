@@ -21,14 +21,14 @@ ZumoMotors motors;
 #define LEFTSPEED 150
 #define RIGHTSPEED 150
 #define HANDTIMING 200
-#define VOLGAFSTAND 40
-#define STOPAFSTAND 20
+#define VOLGAFSTAND 100
+#define STOPAFSTAND 30
 #define NAUWKEURIGHEID 10  //Nauwkeurigheid van de sensoren op een schaal van 10-100, dichter bij de 10 is nauwkeuriger maar kan valse metingen geven.
 
 //Sorry maar ik maak toch echt een globale variabele voor de tijd.
 unsigned long currentMillis = 0;
 
-void startSensoren()
+void StartSensoren()
 {
     while (!Serial);
     delay(1000);
@@ -70,29 +70,20 @@ int SensorAfstand(int sensorNr){
   return(average);
 }
 
-int ScanFront()
+int VolgModus()
 {
-  static unsigned long handDetectieMillis = currentMillis;
-  //De eerste keer dat deze functie wordt aangeroepen ijkt hij de waardes van de sensoren.
-  static int sensorLinksVoorIjk = SensorAfstand(SENSORLINKSVOOR);
-  static int sensorRechtsVoorIjk = SensorAfstand(SENSORRECHTSVOOR);
   //Maak een vlag voor de detectie van een hand.
   static int handDetectie = false;
+  static unsigned long handDetectieMillis = currentMillis;
 
-  //Door de ijkwaarde van de sensorwaarde af te halen wordt de uiteindelijke waarde ~0 als er niks gedetecteerd word.
-  int afstandLinksVoor = (SensorAfstand(SENSORLINKSVOOR)-sensorLinksVoorIjk);
-  int afstandRechtsVoor = (SensorAfstand(SENSORRECHTSVOOR)-sensorRechtsVoorIjk);
-  Serial.print("Proximity links: "); Serial.println(afstandLinksVoor);
-  Serial.print("Proximity rechts: "); Serial.println(afstandRechtsVoor);
+  //Check de afstanden
+  int afstandLinksVoor = Afstand(SENSORLINKSVOOR);
+  int afstandRechtsVoor = Afstand(SENSORRECHTSVOOR);
 
-  
-  /*long nauwkeurigheid = abs((afstandLinksVoor + afstandRechtsVoor)/2);
-  Serial.print("Nauwkeurigheid voor remappen: "); Serial.println(nauwkeurigheid);
-  nauwkeurigheid = map(nauwkeurigheid, 0, 5000, NAUWKEURIGHEID, 50); 
-  nauwkeurigheid = (nauwkeurigheid * nauwkeurigheid); 
-  Serial.print("Nauwkeurigheid na remappen: "); Serial.println(nauwkeurigheid);*/
-
-  //Kijk of er een obstakel voor de auto is
+  Serial.println(afstandLinksVoor);
+  Serial.println(afstandRechtsVoor);
+  //Kijk of er een hand voor de auto is
+  //Als er geen hand meer wordt gedetecteert gedurende HANDTIMING dan stopt hij.
   if((afstandLinksVoor >= NAUWKEURIGHEID) || (afstandRechtsVoor >= NAUWKEURIGHEID))
   {
     handDetectie = true;
@@ -103,151 +94,225 @@ int ScanFront()
   {
     if((currentMillis - handDetectieMillis) >= HANDTIMING)
     {
-      //Serial.println("Geen hand gevonden");
       motors.setLeftSpeed(0);
       motors.setRightSpeed(0);
       handDetectie = false;
     }
   }
 
+  //Wat moet er gebeuren als er een hand is gevonden.
   if(handDetectie == true)
   {
     if((afstandRechtsVoor > VOLGAFSTAND) && (afstandLinksVoor > VOLGAFSTAND))
     {
       //Te dichtbij, rijd achteruit.
-      motors.setLeftSpeed((-LEFTSPEED/1.5));
-      motors.setRightSpeed((-RIGHTSPEED/1.5));
-     // Serial.println("Rijd achteruit");
-      return; 
+      motors.setLeftSpeed((-LEFTSPEED));
+      motors.setRightSpeed((-RIGHTSPEED)); 
     }
-    if((afstandRechtsVoor < (STOPAFSTAND)) && (afstandLinksVoor < (STOPAFSTAND)))
+    else if((afstandRechtsVoor < (STOPAFSTAND)) && (afstandLinksVoor < (STOPAFSTAND)))
     {
       //Te ver weg rijd dichterbij.
-      motors.setLeftSpeed(LEFTSPEED/1.5);
-      motors.setRightSpeed(RIGHTSPEED/1.5);
-      //Serial.println("Rijd tot de volgafstand");
+      motors.setLeftSpeed(LEFTSPEED);
+      motors.setRightSpeed(RIGHTSPEED);
+    }
+    else if(afstandRechtsVoor > (afstandLinksVoor + NAUWKEURIGHEID)){
+      //Draai naar rechts om de hand te volgen
+      motors.setLeftSpeed(LEFTSPEED);
+      motors.setRightSpeed((-RIGHTSPEED));
       return;
     }
-    
-    if(afstandRechtsVoor > (afstandLinksVoor + NAUWKEURIGHEID)){
-      motors.setLeftSpeed(LEFTSPEED/1.5);
-      motors.setRightSpeed((-RIGHTSPEED/1.5));
-      Serial.println("Draai naar rechts");
+    else if(afstandLinksVoor > (afstandRechtsVoor + NAUWKEURIGHEID)){
+      //Draai naar links om de hand te volgen
+      motors.setLeftSpeed((-LEFTSPEED));
+      motors.setRightSpeed(RIGHTSPEED);
       return;
     }
-    
-    if(afstandLinksVoor > (afstandRechtsVoor + NAUWKEURIGHEID)){
-      motors.setLeftSpeed((-LEFTSPEED/1.5));
-      motors.setRightSpeed(RIGHTSPEED/1.5);
-      Serial.println("Draai naar links");
-      return;
-    }
-    
 
-    
+    //Wanneer de auto zich bevind in het gebied tussen de Stopafstand en Volgafstand blijft deze stil staan
+    //Dit is om heen en weer rijden te voorkomen
     if(((afstandRechtsVoor < VOLGAFSTAND) && (afstandRechtsVoor > STOPAFSTAND)) || ((afstandLinksVoor < VOLGAFSTAND) && (afstandLinksVoor > STOPAFSTAND)))
     {
       motors.setLeftSpeed(0);
       motors.setRightSpeed(0);
       Serial.println("Stop met rijden"); 
     }
-
-
   }
 }
 
-int ScanSides()
+int Afstand(int sensor)
 {
   //De eerste keer dat deze functie wordt aangeroepen ijkt hij de waardes van de sensoren.
   static int sensorLinksIjk = SensorAfstand(SENSORLINKS);
   static int sensorRechtsIjk = SensorAfstand(SENSORRECHTS);
-  static unsigned long lastMillisRechts = 0;
-  static unsigned long lastMillisLinks = 0;
-  static int hoogsteLinks = 0;
-  static int hoogsteRechts = 0;
-  static int draaiRechts = false;
+  static int sensorLinksVoorIjk = SensorAfstand(SENSORLINKSVOOR);
+  static int sensorRechtsVoorIjk = SensorAfstand(SENSORRECHTSVOOR);
 
-  //Door de ijkwaarde van de sensorwaarde af te halen wordt de uiteindelijke waarde ~0 als er niks gedetecteerd word.
-  int afstandLinks = (SensorAfstand(SENSORLINKS)-sensorLinksIjk);
-  int afstandRechts = (SensorAfstand(SENSORRECHTS)-sensorRechtsIjk);
+  int afstand = 0;
   
-  //Serial.print("Proximity links: "); Serial.println(afstandLinks);
-  //Serial.print("Proximity rechts: "); Serial.println(afstandRechts);
-  
-  if(afstandLinks > (afstandRechts + NAUWKEURIGHEID)){
-    //hoogsteRechts = 0;
-    //Hier stuur je de motor naar rechts aan, voor nu nog even een led.
-    if(afstandLinks > hoogsteLinks){
-      hoogsteLinks = afstandLinks;
-      Serial.println("draai naar rechts");
-          motors.setLeftSpeed(LEFTSPEED);
-          motors.setRightSpeed(RIGHTSPEED/1.5);
-    }
-    else{
-        motors.setLeftSpeed(LEFTSPEED);
-        motors.setRightSpeed(RIGHTSPEED);
-        hoogsteLinks = afstandLinks;
-        Serial.println("rechtdoor 2");
-    }
-    return 2;
-    
+  if(sensor == SENSORLINKS){
+    //Door de ijkwaarde van de sensorwaarde af te halen wordt de uiteindelijke waarde ~0 als er niks gedetecteerd word.
+    afstand = (SensorAfstand(sensor)-sensorLinksIjk);
   }
-  
-  if(afstandRechts > (afstandLinks + NAUWKEURIGHEID)){
-    //hoogsteLinks = 0;
-    //Hier stuur je de motor naar links aan, voor nu nog even een led.
-    if(afstandRechts > hoogsteRechts){
-      hoogsteRechts = afstandRechts;
-      Serial.println("draai naar links");
-          motors.setLeftSpeed(LEFTSPEED/1.5);
-          motors.setRightSpeed(RIGHTSPEED);
-    }
-    else{
-        motors.setLeftSpeed(LEFTSPEED);
-        motors.setRightSpeed(RIGHTSPEED);
-        hoogsteRechts = afstandRechts;
-        Serial.println("rechtdoor 1");
-    }
-    return 1;
+  else if(sensor == SENSORRECHTS){
+    //Door de ijkwaarde van de sensorwaarde af te halen wordt de uiteindelijke waarde ~0 als er niks gedetecteerd word.
+    afstand = (SensorAfstand(sensor)-sensorRechtsIjk);
   }
-  
-  else
-  {
-    motors.setLeftSpeed(LEFTSPEED);
-    motors.setRightSpeed(RIGHTSPEED);
-    Serial.println("rechtdoor");
+  else if(sensor == SENSORLINKSVOOR){
+    afstand = (SensorAfstand(sensor)-sensorLinksVoorIjk);
   }
-
+  else if(sensor == SENSORRECHTSVOOR){
+    afstand = (SensorAfstand(sensor)-sensorRechtsVoorIjk);
+  }
+  return afstand;
 }
 
-int DraaiRechts()
+int DraaiRechts(unsigned long draaiMillis)
 {
-  static unsigned long draaiMillis = currentMillis;
-  static int draaiTijd = (100000/RIGHTSPEED);
-  static int timeSet = false;
+  //static unsigned long draaiMillis = currentMillis;
+  static int draaiTijd = 590;
   
-  if(((currentMillis - draaiMillis) <= draaiTijd) && ((currentMillis - draaiMillis) > 0))
+  if((currentMillis - draaiMillis) <= draaiTijd)
   {
-    Serial.println("draaien");
+    Serial.println("Draai kort naar rechts");
     motors.setRightSpeed((-RIGHTSPEED));
     motors.setLeftSpeed(LEFTSPEED);
-    timeSet = false;
+    return true;
   }
-  else if(timeSet == false)
+  else if((currentMillis - draaiMillis) <= 2000)
   {
-    motors.setRightSpeed(0);
-    motors.setLeftSpeed(0);
-    draaiMillis = (currentMillis + 2000);
-    timeSet = true;
+    Serial.println("Rechtdoor");
+    motors.setRightSpeed(RIGHTSPEED);
+    motors.setLeftSpeed(LEFTSPEED);
+    return true;
   }
-  
-  
+  else if((currentMillis - draaiMillis) <= (2000+draaiTijd)){
+    Serial.println("Draai nog een keer naar rechts");
+    motors.setRightSpeed((-RIGHTSPEED));
+    motors.setLeftSpeed(LEFTSPEED);
+    return true;
+  }
+  else if((currentMillis - draaiMillis) <= 3200)
+  {
+    Serial.println("Rij weer het pad in");
+    motors.setRightSpeed(RIGHTSPEED);
+    motors.setLeftSpeed(LEFTSPEED);
+    return true;
+  }
+  else{
+    //Klaar met draai maneuvre
+    return false;
+  }
 }
 
-void Pathfinding()
+  
+int Pathfinding()
 {
+  int afstandLinks = Afstand(SENSORLINKS);
+  int afstandRechts = Afstand(SENSORRECHTS);
+  static unsigned long draaiMillis = 0;
+  static int draaien = false;
+  static int inBocht = false;
+  static int bocht = false;
+  static int hoogsteLinks = 0;
+  static int hoogsteRechts = 0;
+  static int laagsteLinks = 0;
+  static int laagsteRechts = 0;
+  static int aantalBochten = 0;
+
+  if(draaien == false && inBocht == false){
+    if(afstandLinks > (afstandRechts + NAUWKEURIGHEID)){
+      //hoogsteRechts = 0;
+      //Hier stuur je de motor naar rechts aan, voor nu nog even een led.
+      if(afstandLinks > hoogsteLinks){
+        hoogsteLinks = afstandLinks;
+        Serial.println("draai naar rechts");
+            motors.setLeftSpeed(LEFTSPEED);
+            motors.setRightSpeed(RIGHTSPEED/2.5);
+      }
+      else{
+          motors.setLeftSpeed(LEFTSPEED);
+          motors.setRightSpeed(RIGHTSPEED);
+          hoogsteLinks = afstandLinks;
+          Serial.println("Rechtdoor 2");
+      }
+    }
+    else if(afstandRechts > (afstandLinks + NAUWKEURIGHEID)){
+      //hoogsteLinks = 0;
+      //Hier stuur je de motor naar links aan, voor nu nog even een led.
+      if(afstandRechts > hoogsteRechts){
+        hoogsteRechts = afstandRechts;
+        Serial.println("draai naar links");
+            motors.setLeftSpeed(LEFTSPEED/2.5);
+            motors.setRightSpeed(RIGHTSPEED);
+      }
+      else{
+          motors.setLeftSpeed(LEFTSPEED);
+          motors.setRightSpeed(RIGHTSPEED);
+          hoogsteRechts = afstandRechts;
+          Serial.println("Rechtdoor 1");
+      }
+    }
+    else if((afstandLinks < NAUWKEURIGHEID) || (afstandRechts < NAUWKEURIGHEID)){
+      motors.setLeftSpeed(0);
+      motors.setRightSpeed(0);
+      Serial.println("STOP");
+    }
+    else{
+      motors.setLeftSpeed(LEFTSPEED);
+      motors.setRightSpeed(RIGHTSPEED);
+      Serial.println("Rechtdoor");
+    }
+  }
 
 
+  //Code om te kijken wanneer hij een hoek om moet
+  if(((Afstand(SENSORLINKSVOOR) > 350) || (Afstand(SENSORRECHTSVOOR) > 350)) && (draaien == false)){
+    Serial.println("We rijden tegen een muur we moeten draaien");
+    laagsteLinks = afstandLinks;
+    hoogsteLinks = 0;
+    draaiMillis = currentMillis;
+    draaien = true;
+  }
+  
+  if(draaien == true){
+    draaien = DraaiRechts(draaiMillis);  
+    /*motors.setLeftSpeed(LEFTSPEED/1.5);
+    motors.setRightSpeed(-RIGHTSPEED/1.5);
+    if(afstandLinks < laagsteLinks){
+        laagsteLinks = afstandLinks;
+    }
+    if(afstandLinks > (laagsteLinks + NAUWKEURIGHEID)){
+      hoogsteLinks = afstandLinks;
+    }
+    if(afstandLinks <= (hoogsteLinks-3)){
+      Serial.println("Ver genoeg gedraaid ga weer verder");
+      motors.setLeftSpeed(LEFTSPEED);
+      motors.setRightSpeed(RIGHTSPEED);
+      aantalBochten++;
+      inBocht = true;
+      draaien = false;
+      hoogsteLinks = 0;
+      hoogsteRechts = 0;
+    }
+  }
+  if(inBocht == true){
+    if(bocht == false){
+      motors.setLeftSpeed(LEFTSPEED);
+      motors.setRightSpeed(RIGHTSPEED);
+    }
+    if(afstandRechts > hoogsteRechts){
+      hoogsteRechts = afstandRechts;
+    }
+    if(afstandRechts < (hoogsteRechts - NAUWKEURIGHEID)){
+      bocht = true;
+      motors.setLeftSpeed(LEFTSPEED/1.5);
+      motors.setRightSpeed(-RIGHTSPEED/1.5);
+      delay(1000);
+      bocht = false;
+      inBocht = false;
+    }*/
+  }
+  
   
 }
 
@@ -255,7 +320,7 @@ void setup()
 {
   Serial.begin(9600);
   delay(1000);
-  startSensoren();
+  StartSensoren();
   SensorSelect(SENSORLINKS);
   if (! vcnl.begin()){
     Serial.println("Sensor niet gevonden:");
@@ -268,10 +333,18 @@ void setup()
     while (1);
   }
   Serial.println("VCNL4010 Rechterkant gevonden");
-
-  //ledjes om te testen
-  //pinMode(MOTORLINKS, OUTPUT);
-  //pinMode(MOTORRECHTS, OUTPUT);
+  SensorSelect(SENSORLINKSVOOR);
+  if (! vcnl.begin()){
+    Serial.println("Sensor niet gevonden:");
+    while (1);
+  }
+  Serial.println("VCNL4010 Linksvoor gevonden");
+  SensorSelect(SENSORRECHTSVOOR);
+  if (! vcnl.begin()){
+    Serial.println("Sensor niet gevonden:");
+    while (1);
+  }
+  Serial.println("VCNL4010 Rechtsvoor gevonden");;
 }
 
 
@@ -280,8 +353,8 @@ void loop()
 {
   currentMillis = millis();
   //motorActie 1 = links, 2 = rechts, 0 is niks of rechtdoor.
-  //int motorActie = ScanSides();
+  //int motorActie = Pathfinding();
+  int volgActie = VolgModus();
   //DraaiRechts();
-  int volgActie = ScanFront();
   //delay(100);
 }
