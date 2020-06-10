@@ -29,6 +29,7 @@ ZumoBuzzer buzzer;
 
 //Sorry maar ik maak toch echt een globale variabele voor de tijd.
 unsigned long currentMillis = 0;
+volatile int noodstop = false;
 
 //Deze functie initialiseert de sensoren
 void StartSensoren()
@@ -452,6 +453,19 @@ void RijdTerug(unsigned long draaiMillis)
   
 }
 
+void Noodknop()
+{
+  delay(100);
+  if(noodstop == false){
+    noodstop = true;
+    Serial.println("noodknop");
+  }
+  else if(noodstop == true){
+    noodstop = false;
+    Serial.println("ga verder");
+  }
+}
+
 //Begin de Serial voor debuggen, zet pinmodes, start de sensoren, kijk of de sensoren het doen en ijk hierna de sensoren.
 void setup() 
 {
@@ -459,6 +473,8 @@ void setup()
   delay(1000);
   pinMode(BOOMLINKS, INPUT);
   pinMode(BOOMRECHTS, INPUT);
+  pinMode(2, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(2), Noodknop, FALLING);
   StartSensoren();
   SensorSelect(SENSORLINKS);
   if (! vcnl.begin()){
@@ -504,6 +520,12 @@ void setup()
 void loop() 
 {
   currentMillis = millis();
-  //int motorActie = Pathfinding();
-  int volgActie = VolgModus();
+  if(noodstop == false){
+    //int motorActie = Pathfinding();
+    int volgActie = VolgModus();
+  }
+  else if(noodstop == true){
+    motors.setLeftSpeed(0);
+    motors.setRightSpeed(0);
+  }
 }
