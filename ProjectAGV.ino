@@ -12,7 +12,7 @@ ZumoMotors motors;
 ZumoBuzzer buzzer;
 
 #define TCAADDR 0x70       //Het adres van de multiplexer
-
+//define sjekkie
 //Verander hieronder op welk adres/pin je de sensoren hebt gezet
 #define SENSORLINKS 2      
 #define SENSORRECHTS 7
